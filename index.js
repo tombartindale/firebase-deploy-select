@@ -120,23 +120,46 @@ function resolveGroupMembers(groups, indexFile) {
 
 // ── UI ─────────────────────────────────────────────────────────────────────
 
-function buildItems(groups, individuals) {
+function buildItems(groups, individuals, filter) {
+  const f = filter ? filter.toLowerCase() : '';
   const items = [{ type: 'all' }];
+
   for (const g of groups) {
-    items.push({ type: 'gsep', group: g });
-    items.push({ type: 'group', group: g });
-    if (g.expanded) {
-      for (const m of g.members) {
+    if (f) {
+      const groupMatches = g.name.toLowerCase().includes(f);
+      const matchingMembers = g.members.filter(m =>
+        m.toLowerCase().includes(f) || `${g.name}-${m}`.toLowerCase().includes(f)
+      );
+      if (!groupMatches && matchingMembers.length === 0) continue;
+      items.push({ type: 'gsep', group: g });
+      items.push({ type: 'group', group: g });
+      const membersToShow = groupMatches ? g.members : matchingMembers;
+      for (const m of membersToShow) {
         items.push({ type: 'member', group: g, member: m });
+      }
+    } else {
+      items.push({ type: 'gsep', group: g });
+      items.push({ type: 'group', group: g });
+      if (g.expanded) {
+        for (const m of g.members) {
+          items.push({ type: 'member', group: g, member: m });
+        }
       }
     }
   }
+
   if (individuals.length > 0) {
-    items.push({ type: 'isep' });
-    for (const ind of individuals) {
-      items.push({ type: 'individual', ind });
+    const indsToShow = f
+      ? individuals.filter(ind => ind.name.toLowerCase().includes(f))
+      : individuals;
+    if (indsToShow.length > 0) {
+      items.push({ type: 'isep' });
+      for (const ind of indsToShow) {
+        items.push({ type: 'individual', ind });
+      }
     }
   }
+
   return items;
 }
 
@@ -173,13 +196,17 @@ function renderLine(isCursor, checked, partial, text, dimText) {
   return ` ${cur} ${cb} ${label}`;
 }
 
-function renderScreen(groups, individuals, deployAll, cursor, scrollTop, viewHeight) {
-  const items = buildItems(groups, individuals);
+function renderScreen(groups, individuals, deployAll, filter, cursor, scrollTop, viewHeight) {
+  const items = buildItems(groups, individuals, filter);
   const selected = countSelected(groups, individuals, deployAll);
   const out = [];
 
   out.push(`${BOLD}Firebase Function Deployer${R}`);
-  out.push(`${DIM}[↑↓] move  [→] expand  [←] collapse  [space] select  [enter] deploy  [q] quit${R}`);
+  out.push(`${DIM}[↑↓] move  [→] expand  [←] collapse  [space] select  [enter] deploy  [esc] clear filter${R}`);
+  const filterDisplay = filter
+    ? `Filter: ${CYAN}${filter}${R}█`
+    : `${DIM}Filter: (type to search)${R}`;
+  out.push(filterDisplay);
   out.push('');
 
   const visible = items.slice(scrollTop, scrollTop + viewHeight);
@@ -219,7 +246,8 @@ function renderScreen(groups, individuals, deployAll, cursor, scrollTop, viewHei
   }
 
   out.push('');
-  out.push(`${DIM} ${cursor + 1}/${items.length}  selected: ${selected}${R}`);
+  const total = items.filter(isSelectable).length;
+  out.push(`${DIM} ${cursor + 1}/${items.length}  visible: ${total}  selected: ${selected}${R}`);
 
   process.stdout.write('\x1b[2J\x1b[H' + out.join('\n'));
 }
@@ -244,17 +272,29 @@ function buildDeployCommand(groups, individuals, deployAll) {
 
 async function runSelector(groups, individuals) {
   let deployAll = false;
+  let filter = '';
   let cursor = 0;
   let scrollTop = 0;
-  const HEADER = 3;
+  const HEADER = 4;
   const FOOTER = 2;
   const viewHeight = Math.max(5, (process.stdout.rows || 30) - HEADER - FOOTER);
 
-  function getItems() { return buildItems(groups, individuals); }
+  function getItems() { return buildItems(groups, individuals, filter); }
 
   function adjustScroll() {
     if (cursor < scrollTop) scrollTop = cursor;
     if (cursor >= scrollTop + viewHeight) scrollTop = cursor - viewHeight + 1;
+  }
+
+  function clampCursor() {
+    const items = getItems();
+    if (items.length === 0) { cursor = 0; return; }
+    // If current cursor is out of range or on a separator, find next selectable
+    if (cursor >= items.length || !isSelectable(items[cursor])) {
+      cursor = items.findIndex(isSelectable);
+      if (cursor === -1) cursor = 0;
+    }
+    adjustScroll();
   }
 
   function moveCursor(delta) {
@@ -264,7 +304,7 @@ async function runSelector(groups, individuals) {
     if (next >= 0 && next < items.length) { cursor = next; adjustScroll(); }
   }
 
-  function draw() { adjustScroll(); renderScreen(groups, individuals, deployAll, cursor, scrollTop, viewHeight); }
+  function draw() { clampCursor(); renderScreen(groups, individuals, deployAll, filter, cursor, scrollTop, viewHeight); }
 
   readline.emitKeypressEvents(process.stdin);
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
@@ -277,12 +317,18 @@ async function runSelector(groups, individuals) {
       const items = getItems();
       const item = items[cursor];
 
-      if (key.name === 'q' || (key.ctrl && key.name === 'c')) {
+      if (key.ctrl && key.name === 'c') {
         cleanup(); console.log('Aborted.'); process.exit(0);
       }
 
-      if      (key.name === 'up')   moveCursor(-1);
-      else if (key.name === 'down') moveCursor(1);
+      if (key.name === 'escape') {
+        filter = '';
+      }
+      else if (key.name === 'backspace') {
+        filter = filter.slice(0, -1);
+      }
+      else if (key.name === 'up')   { moveCursor(-1); }
+      else if (key.name === 'down') { moveCursor(1); }
       else if (key.name === 'right') {
         if (item?.type === 'group' && item.group.members.length > 0 && !item.group.expanded)
           item.group.expanded = true;
@@ -309,6 +355,12 @@ async function runSelector(groups, individuals) {
         cleanup();
         resolve(buildDeployCommand(groups, individuals, deployAll));
         return;
+      }
+      else if (str && str.length === 1 && !key.ctrl && !key.meta) {
+        // Printable character — append to filter
+        filter += str;
+        cursor = 0;
+        scrollTop = 0;
       }
 
       draw();
