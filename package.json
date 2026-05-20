@@ -1,0 +1,13 @@
+{
+  "name": "firebase-deploy-select",
+  "version": "1.0.0",
+  "description": "Interactive CLI to select and deploy individual Firebase functions",
+  "bin": {
+    "firebase-deploy-select": "./index.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": ["firebase", "functions", "deploy", "cli"],
+  "license": "MIT"
+}
