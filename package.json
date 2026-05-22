@@ -1,6 +1,6 @@
 {
   "name": "firebase-deploy-select",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Interactive CLI to select and deploy individual Firebase functions",
   "bin": {
     "firebase-deploy-select": "./index.js"
