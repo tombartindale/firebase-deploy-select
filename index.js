@@ -63,7 +63,9 @@ function parseIndexFile(content) {
     const line = lines[i];
     if (/^\s*\/\//.test(line)) { i++; continue; }
 
-    const m = line.match(/^\s*exports\.(\w+)\s*=\s*(.*)/);
+    const m = line.match(/^\s*exports\.(\w+)\s*=\s*(.*)/)
+           || line.match(/^\s*export\s+(?:const|let|var|async\s+function|function)\s+(\w+)\s*[=(](.*)/)
+           || line.match(/^\s*export\s+\{\s*(\w+)[,\s}]/);
     if (!m) { i++; continue; }
 
     const [, name, rhs] = m;
@@ -97,7 +99,8 @@ function parseModuleExports(filePath) {
   const names = [];
   for (const line of content.split('\n')) {
     if (/^\s*\/\//.test(line)) continue;
-    const m = line.match(/^\s*exports\.(\w+)\s*=/);
+    const m = line.match(/^\s*exports\.(\w+)\s*=/)
+           || line.match(/^\s*export\s+(?:const|let|var|async\s+function|function)\s+(\w+)\s*[=(]/);
     if (m) names.push(m[1]);
   }
   return names;
