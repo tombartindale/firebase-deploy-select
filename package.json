@@ -3,7 +3,7 @@
   "version": "1.0.2",
   "description": "Interactive CLI to select and deploy individual Firebase functions",
   "bin": {
-    "firebase-deploy-select": "./index.js"
+    "firebase-deploy-select": "index.js"
   },
   "engines": {
     "node": ">=16"
