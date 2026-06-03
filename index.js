@@ -45,6 +45,12 @@ function resolveProject() {
   return { indexFile, firebaseRoot };
 }
 
+function resolveDiscoveryTimeout() {
+  const i = process.argv.indexOf('--discovery-timeout');
+  if (i !== -1 && process.argv[i + 1]) return parseInt(process.argv[i + 1], 10);
+  return 1800; // seconds; matches the 30-minute execSync timeout
+}
+
 // ── Parsing ────────────────────────────────────────────────────────────────
 
 function parseIndexFile(content) {
@@ -409,7 +415,13 @@ async function main() {
 
   const ok = await confirm(command);
   if (ok) {
-    execSync(command, { stdio: 'inherit', cwd: firebaseRoot });
+    const discoveryTimeout = resolveDiscoveryTimeout();
+    execSync(command, {
+      stdio: 'inherit',
+      cwd: firebaseRoot,
+      timeout: 30 * 60 * 1000,
+      env: { ...process.env, FUNCTIONS_DISCOVERY_TIMEOUT: String(discoveryTimeout) },
+    });
   } else {
     console.log('Aborted.');
   }
